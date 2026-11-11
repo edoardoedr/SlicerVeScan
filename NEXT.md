@@ -7,7 +7,8 @@
 - [ ] Test with a small sample case in `VeScanTest` (now: geometry and config only).
 
 ## VeScan-field
-- [ ] At each new release: `python3 tools/sync_vescan.py <tag>`, review the reported config differences, commit.
+- [ ] At each new release: `python3 tools/sync_vescan.py <tag>`, review the reported config differences (field and thalweg), commit.
+- [ ] Thalweg method (vescan-field 1.1.0): full run in Slicer 5.12 on a sample case, both bifurcations (zone / point), then Apply cut.
 
 ## Later
 - [ ] VMTK method (`vmtkRadio` is disabled): postponed.

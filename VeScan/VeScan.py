@@ -57,8 +57,14 @@ FISSURE_VALUES = [60, 61, 62, 63]  # FissureContact of lobe_fissures.vtk
 PREVIEW_ARRAY = "CutPreviewGeneration"  # centerline cell array of the live preview (VeScanLogic.previewCut)
 CROSSING_COLUMNS = ["ID", "structure", "type", "lobes", "length mm", "angle deg"]
 
-# vescan_field config: every parameter is in this JSON, the UI overwrites only a few keys (VeScanLogic.buildConfig)
-CONFIG_PATH = pathlib.Path(__file__).parent / "Resources" / "vescan_field.json"
+# method -> its package (both in the vescan-field distribution, same API and output files; thalweg differs only in
+# the store, the margin and the centerlines stage) and its config: every parameter is in this JSON, the UI
+# overwrites only a few keys (VeScanLogic.buildConfig)
+METHOD_PACKAGE = {"field": "vescan_field", "thalweg": "vescan_thalweg"}
+RESOURCES_DIR = pathlib.Path(__file__).parent / "Resources"
+CONFIG_PATHS = {method: RESOURCES_DIR / f"{package}.json" for method, package in METHOD_PACKAGE.items()}
+BIFURCATIONS = ["vmtk", "point"]  # Thalweg's pipeline.centerlines.bifurcations, in the order of bifurcationsCombo
+MIN_PYTHON = (3, 12)  # vescan-field >= 1.1 (requires-python), i.e. 3D Slicer >= 5.12
 REQUIREMENTS_PATH = pathlib.Path(__file__).parent / "Resources" / "requirements.txt"
 AIRWAY_WALL_CLASS = "lung_airways_wall"
 RAS_TO_LPS = np.diag([-1.0, -1.0, 1.0])
@@ -116,7 +122,7 @@ number of generations.
 and explore the labels and crossing vessels in <i>Results</i>.
 <br><br>
 User guide: <a href="https://github.com/edoardoedr/SlicerVeScan#usage">SlicerVeScan</a>.
-Method and output files: <a href="https://github.com/edoardoedr/VeScan-field">VeScan-field</a>.
+Methods (Field, Thalweg) and output files: <a href="https://github.com/edoardoedr/VeScan-field">VeScan-field</a>.
 """)
         self.parent.acknowledgementText = _("""
 Developed at the Institute of Biomedical Engineering (IBT), Karlsruhe Institute of Technology (KIT).
@@ -157,7 +163,8 @@ class VeScanParameterNode:
     lobesMapping: str = ""  # lobe table: "RUL=<segment name>;RML=;..." (empty name: None; "": not set yet)
     storePath: pathlib.Path
     # Method
-    method: Annotated[str, Choice(["field", "vmtk"])] = "field"
+    method: Annotated[str, Choice(["field", "thalweg", "vmtk"])] = "field"
+    bifurcations: Annotated[str, Choice(BIFURCATIONS)] = "vmtk"  # method thalweg only
     runArtery: bool = True
     runVeins: bool = True
     runAirways: bool = True
@@ -202,8 +209,15 @@ def installedVescan():
 def ensureVescanField() -> bool:
     """Install vescan-field (Resources/requirements.txt) on first use, or update it when the installed version is
     older than the required one; an editable install (development) is never replaced. numpy stays at Slicer's
-    version, otherwise pip could upgrade it and break Slicer. False if it is missing and the user declines."""
+    version, otherwise pip could upgrade it and break Slicer. False if it is missing and the user declines, or if
+    Slicer's Python is older than vescan-field's."""
     from packaging.version import Version
+    if sys.version_info < MIN_PYTHON:
+        slicer.util.errorDisplay(_("VeScan needs Python {required} or newer (3D Slicer 5.12 or newer), this Slicer has "
+                                   "Python {python}.").format(required=".".join(map(str, MIN_PYTHON)),
+                                                              python=".".join(map(str, sys.version_info[:3]))),
+                                 windowTitle="VeScan")
+        return False
     installed, required = installedVescan(), requiredVescanVersion()
     if installed is None and importlib.util.find_spec("vescan_field"):
         return True  # importable without package metadata (e.g. on the Python path): left as it is
@@ -219,7 +233,7 @@ def ensureVescanField() -> bool:
     with slicer.util.displayPythonShell(), slicer.util.WaitCursor():
         slicer.util.pip_install(["--upgrade", "-r", str(REQUIREMENTS_PATH), f"numpy=={np.__version__}"])
     importlib.invalidate_caches()
-    if installed and "vescan_field" in sys.modules:
+    if installed and {"vescan_field", "vescan_thalweg"} & set(sys.modules):
         slicer.util.infoDisplay(_("vescan-field updated to {required}: restart Slicer to use it.").format(required=required),
                                 windowTitle="VeScan")
     return True
@@ -289,6 +303,9 @@ class VeScanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Method
         self.ui.fieldRadio.toggled.connect(self.onMethodChanged)
+        self.ui.thalwegRadio.toggled.connect(self.onMethodChanged)
+        self.ui.bifurcationsCombo.currentIndexChanged.connect(
+            lambda index: self._setParameter("bifurcations", BIFURCATIONS[index]))
 
         # Output
         self.ui.runButton.clicked.connect(self.onRun)
@@ -384,6 +401,11 @@ class VeScanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             for name in INPUTS:
                 isFile = getattr(self._parameterNode, f"{name}Source") == "file"
                 getattr(self.ui, f"{name}FileRadio" if isFile else f"{name}SceneRadio").checked = True
+            # read both first: checking a radio updates the parameters
+            method, bifurcations = self._parameterNode.method, self._parameterNode.bifurcations
+            getattr(self.ui, f"{method if method in METHOD_PACKAGE else 'field'}Radio").checked = True
+            self.ui.bifurcationsCombo.currentIndex = BIFURCATIONS.index(bifurcations)
+            self.onMethodChanged()
             self._updateRunButtonState()
 
     def _setParameter(self, name, value) -> None:
@@ -544,7 +566,9 @@ class VeScanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     #
 
     def onMethodChanged(self) -> None:
-        self._setParameter("method", "field" if self.ui.fieldRadio.checked else "vmtk")
+        method = "field" if self.ui.fieldRadio.checked else "thalweg" if self.ui.thalwegRadio.checked else "vmtk"
+        self._setParameter("method", method)
+        self.ui.bifurcationsLabel.visible = self.ui.bifurcationsCombo.visible = method == "thalweg"
 
     def _updateRunButtonState(self, caller=None, event=None) -> None:
         p = self._parameterNode
@@ -555,7 +579,9 @@ class VeScanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if not structures:
             missing.append(_("a structure"))
         missing += [name for name in structures if not self._isInputSet(name)]  # CT optional
-        if p.method == "field" and not isPathSet(p.storePath):
+        if p.method not in METHOD_PACKAGE:
+            missing.append(_("an available method"))
+        elif not isPathSet(p.storePath):
             missing.append(_("field store"))
         if (p.stagePreprocess or p.stageAnatomy) and not self._isInputSet("lobes"):
             missing.append(_("lobes"))
@@ -570,6 +596,12 @@ class VeScanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if not ensureVescanField():
             return
         p = self._parameterNode
+        if not importlib.util.find_spec(METHOD_PACKAGE[p.method]):
+            slicer.util.errorDisplay(_("The installed vescan-field has no {package}: update it to {required} "
+                                       "(an editable install: pull the clone and install it again).").format(
+                                         package=METHOD_PACKAGE[p.method], required=requiredVescanVersion()),
+                                     windowTitle="VeScan")
+            return
         self.ui.logText.clear()
         self.ui.cancelButton.enabled = True
         self.ui.runButton.enabled = False
@@ -730,24 +762,26 @@ class RunCancelled(Exception):
 
 
 class UiLogHandler(logging.Handler):
-    """Forwards the vescan_field messages to the module log and keeps the GUI responsive."""
+    """Forwards the vescan_field / vescan_thalweg messages to the module log and keeps the GUI responsive."""
 
-    def __init__(self, callback):
+    def __init__(self, callback, package):
         super().__init__()
         self.callback = callback
+        self.prefix = f"{package}."
 
     def emit(self, record):
-        self.callback(f"{record.name.removeprefix('vescan_field.')}: {record.getMessage()}")
+        self.callback(f"{record.name.removeprefix(self.prefix)}: {record.getMessage()}")
         slicer.app.processEvents()
 
 
 class VeScanLogic(ScriptedLoadableModuleLogic):
-    """Inputs are loaded with Slicer, vescan_field computes and saves (VeScan's output layout),
-    and each output is shown in 3D as soon as it is written."""
+    """Inputs are loaded with Slicer, vescan_field or vescan_thalweg (by method) computes and saves (VeScan's
+    output layout, the same for both), and each output is shown in 3D as soon as it is written."""
 
     def __init__(self) -> None:
         ScriptedLoadableModuleLogic.__init__(self)
         self._cancelRequested = False
+        self.package = METHOD_PACKAGE["field"]  # package of the last run (its clip stage cuts the tree)
         self._inputs = {}          # input name -> (file path(s), node loaded from them)
         self._models = {}          # (kind, structure) -> displayed node
         self.lobesNode = None
@@ -762,6 +796,10 @@ class VeScanLogic(ScriptedLoadableModuleLogic):
 
     def getParameterNode(self):
         return VeScanParameterNode(super().getParameterNode())
+
+    def module(self, name, package=None):
+        """Module `name` of the method's package (default: the last run's): e.g. module("stages.clip")."""
+        return importlib.import_module(f"{package or self.package}.{name}")
 
     # Inputs
 
@@ -839,6 +877,10 @@ class VeScanLogic(ScriptedLoadableModuleLogic):
         return segmentation, segmentId
 
     def loadStore(self, path):
+        """The ranked store as the method reads it: vescan_field's Store, or thalweg's FieldStore."""
+        if self.package == METHOD_PACKAGE["thalweg"]:
+            from thalweg.store import open_store
+            return open_store(path)
         from vescan_field.store import Store
         return Store(path)
 
@@ -876,9 +918,9 @@ class VeScanLogic(ScriptedLoadableModuleLogic):
         return merged
 
     @staticmethod
-    def geometry(volumeNode):
-        """vescan Geometry of a volume node: LPS, as SimpleITK reads the same image."""
-        from vescan_field.field import Geometry
+    def geometry(volumeNode, package=METHOD_PACKAGE["field"]):
+        """vescan Geometry (of `package`) of a volume node: LPS, as SimpleITK reads the same image."""
+        Geometry = importlib.import_module(f"{package}.field").Geometry
         m = vtk.vtkMatrix4x4()
         volumeNode.GetIJKToRASDirectionMatrix(m)
         directions = np.array([[m.GetElement(r, c) for c in range(3)] for r in range(3)])
@@ -902,10 +944,11 @@ class VeScanLogic(ScriptedLoadableModuleLogic):
         return labelmap
 
     def buildConfig(self, params, outputDir, airwayWall=False, lobes=None):
-        """The bundled JSON with the keys set by the UI, saved in the output folder and validated by vescan.
-        lobes: the active lobes (pipeline.lobes.enabled; None: as in the JSON)."""
-        from vescan_field import config, io
-        data = json.loads(CONFIG_PATH.read_text())
+        """The method's bundled JSON with the keys set by the UI, saved in the output folder and validated by its
+        package. lobes: the active lobes (pipeline.lobes.enabled; None: as in the JSON)."""
+        package = METHOD_PACKAGE[params.method]
+        config, io = self.module("config", package), self.module("io", package)
+        data = json.loads(CONFIG_PATHS[params.method].read_text())
         batch = data["batch"]
         batch.update(patients_root_dir=str(outputDir), surfaces_root_dir=str(outputDir / "surfaces"),
                      results_root_dir=str(outputDir), store=pathlib.Path(params.storePath).name)
@@ -917,6 +960,8 @@ class VeScanLogic(ScriptedLoadableModuleLogic):
         data["pipeline"]["stages"] = dict(surfaces=params.stagePreprocess, centerlines=params.stageCenterlines,
                                           anatomy=params.stageAnatomy, surface_labels=True, clip=False)
         data["pipeline"]["clip"]["cap"] = params.capSurface
+        if params.method == "thalweg":
+            data["pipeline"]["centerlines"]["bifurcations"] = params.bifurcations
         if lobes is not None:
             data["pipeline"]["lobes"]["enabled"] = lobes
         outputDir.mkdir(parents=True, exist_ok=True)
@@ -930,10 +975,11 @@ class VeScanLogic(ScriptedLoadableModuleLogic):
         structures: name -> [(segmentation, segment ID), ...] (airways: + airway wall);
         lobeSegments: lobe -> segment ID in self.lobesNode (None: lobe excluded, pipeline.lobes.enabled).
         Returns False if cancelled."""
-        from vescan_field import io, log
-        from vescan_field.lobes import lobe_mask_names
-        from vescan_field.orchestrator import STAGES
-        from vescan_field.paths import SurfacePaths
+        self.package = METHOD_PACKAGE[params.method]
+        io, log = self.module("io"), self.module("log")
+        lobe_mask_names = self.module("lobes").lobe_mask_names
+        STAGES = self.module("orchestrator").STAGES
+        SurfacePaths = self.module("paths").SurfacePaths
 
         self._cancelRequested = False
         self.contexts = {}
@@ -965,7 +1011,7 @@ class VeScanLogic(ScriptedLoadableModuleLogic):
 
         log.setup(cfg.logging.level)
         vescanLogger = logging.getLogger(log.ROOT)
-        handler = UiLogHandler(logCallback) if logCallback else None
+        handler = UiLogHandler(logCallback, self.package) if logCallback else None
         if handler:
             vescanLogger.addHandler(handler)
         store = self.loadStore(params.storePath)
@@ -975,23 +1021,22 @@ class VeScanLogic(ScriptedLoadableModuleLogic):
         fileLog = log.to_file(outputDir / cfg.logging.file_name) if cfg.logging.file_name else contextlib.nullcontext()
         try:
             with fileLog:
-                ctGeom = self.geometry(reference)
+                ctGeom = self.geometry(reference, self.package)
                 lobes = lobe_mask_names(cfg.pipeline.lobes.enabled, cfg.pipeline.lobes.names)
                 surfaces = SurfacePaths(cfg.batch.surfaces_root_dir)
                 if cfg.pipeline.stages.surfaces:
                     begin("lobes")
                     self._runLobes(cfg, lobes, lobeSegments, reference, ctGeom, surfaces)
                 for structure, classes in enabled.items():
-                    begin("field", structure)
+                    begin("margin", structure)
                     mask = np.logical_or.reduce([self.mask(seg, sid, reference) for seg, sid in structures[structure]])
                     ctx = self._buildContext(cfg, patient, structure, classes, store, mask, ctGeom,
                                              lobes, surfaces, outputDir)
                     self.contexts[structure] = ctx
-                    summary = dict(pipeline="field", patient=ctx.patient, structure=structure, store_classes=classes,
-                                   store=str(store.path), field=dataclasses.asdict(cfg.pipeline.field), qa_mask=ctx.qa)
+                    summary = self._summary(cfg, ctx, store)
                     for name in stages:
                         begin(name, structure)
-                        stage = importlib.import_module(f"vescan_field.stages.{name}")
+                        stage = self.module(f"stages.{name}")
                         summary[name] = stage.run(ctx, getattr(cfg.pipeline, name))
                         self._showStageOutput(name, ctx)
                     summary["timings_s"] = ctx.timings
@@ -1002,7 +1047,8 @@ class VeScanLogic(ScriptedLoadableModuleLogic):
             vescanLogger.warning("cancelled")
             return False
         finally:
-            store.close()
+            if hasattr(store, "close"):
+                store.close()
             if reference is not ctNode:
                 slicer.mrmlScene.RemoveNode(reference)
             if handler:
@@ -1017,10 +1063,10 @@ class VeScanLogic(ScriptedLoadableModuleLogic):
     def _runLobes(self, cfg, lobes, lobeSegments, referenceNode, ctGeom, surfaces):
         """As vescan's stages.surfaces.run_patient, with the lobe masks from the lobe segmentation:
         one surface per lobe (read again by anatomy), lobe_segments.vtk, lobe_fissures.vtk and the legend."""
-        from vescan_field import io
-        from vescan_field.stages.surfaces import lobe_segments
-        from vescan_field.stages.surfaces.convert import convert_mask
-        from vescan_field.surface import save_surface
+        io = self.module("io")
+        lobe_segments = self.module("stages.surfaces.lobe_segments")
+        convert_mask = self.module("stages.surfaces.convert").convert_mask
+        save_surface = self.module("surface").save_surface
 
         surfaces.surfaces_dir.mkdir(parents=True, exist_ok=True)
         c = cfg.pipeline.surfaces.convert
@@ -1030,7 +1076,7 @@ class VeScanLogic(ScriptedLoadableModuleLogic):
                                 smoothing_factor=c.smoothing_factor, decimation_factor=c.decimation_factor,
                                 compute_normals=c.compute_normals)
             if poly is None:
-                logging.getLogger("vescan_field.slicer").warning(f"empty lobe {lobe}")
+                logging.getLogger(f"{self.package}.slicer").warning(f"empty lobe {lobe}")
                 continue
             save_surface(poly, surfaces.surface(maskName))
             polys[lobe] = poly
@@ -1049,23 +1095,38 @@ class VeScanLogic(ScriptedLoadableModuleLogic):
         io.write_json(surfaces.segments_legend, lobe_segments.legend(fissures))
 
     def _buildContext(self, cfg, patient, structure, classes, store, mask, ctGeom, lobes, surfaces, outputDir):
-        """As vescan's orchestrator.build_context, with the mask from Slicer."""
-        from vescan_field import io
-        from vescan_field.field import margin_from_store
-        from vescan_field.orchestrator import StructureContext
-        from vescan_field.paths import PipelinePaths, final_export_dir
-
-        paths = PipelinePaths(final_export_dir(outputDir, structure), debug=cfg.pipeline.debug_files)
+        """As the package's orchestrator.build_context, with the mask from Slicer. Field: the margin resampled on
+        the CT grid around the mask; thalweg: the union margin on the store's own grid."""
+        pathsmod = self.module("paths")
+        paths = pathsmod.PipelinePaths(pathsmod.final_export_dir(outputDir, structure), debug=cfg.pipeline.debug_files)
         paths.make_dirs()
+        common = dict(patient=patient, structure=structure, classes=classes, store=store, patient_dir=outputDir,
+                      results_dir=outputDir, surfaces=surfaces, paths=paths, mask=mask, ct_geom=ctGeom, lobes=lobes,
+                      keep_largest_component=cfg.pipeline.surfaces.preprocess.keep_largest_component)
+        StructureContext = self.module("orchestrator").StructureContext
+        if self.package == METHOD_PACKAGE["thalweg"]:
+            margin_ = self.module("margin")
+            t0 = time.time()
+            margin, geometry, ref = margin_.union_margin(store, classes)
+            timings = {"margin": time.time() - t0}
+            if paths.debug:
+                margin_.write_margin_image(paths.margin, margin, geometry)
+            return StructureContext(**common, margin=margin, geometry=geometry, ref=ref, timings=timings)
+        from vescan_field.field import margin_from_store
         margin, geom, qa, timings = margin_from_store(store, [store.class_index[c] for c in classes], ctGeom,
                                                       mask.shape, mask=mask, pad_voxels=cfg.pipeline.field.pad_voxels)
         if paths.debug:
-            io.write_margin_image(paths.margin, margin, geom)
-        return StructureContext(patient=patient, structure=structure, classes=classes, store=store,
-                                patient_dir=outputDir, results_dir=outputDir, surfaces=surfaces, paths=paths,
-                                mask=mask, ct_geom=ctGeom, lobes=lobes, margin=margin, geom=geom, qa=qa,
-                                timings=dict(timings),
-                                keep_largest_component=cfg.pipeline.surfaces.preprocess.keep_largest_component)
+            self.module("io").write_margin_image(paths.margin, margin, geom)
+        return StructureContext(**common, margin=margin, geom=geom, qa=qa, timings=dict(timings))
+
+    def _summary(self, cfg, ctx, store):
+        """Start of run_summary.json, as the package's orchestrator writes it."""
+        summary = dict(pipeline=self.package.removeprefix("vescan_"), patient=ctx.patient, structure=ctx.structure,
+                       store_classes=ctx.classes, store=str(store.path))
+        if self.package == METHOD_PACKAGE["thalweg"]:
+            import thalweg
+            return dict(summary, thalweg_version=thalweg.__version__, margin_grid=list(ctx.margin.shape))
+        return dict(summary, field=dataclasses.asdict(cfg.pipeline.field), qa_mask=ctx.qa)
 
     def cancel(self):
         self._cancelRequested = True
@@ -1230,8 +1291,7 @@ class VeScanLogic(ScriptedLoadableModuleLogic):
 
     def applyCut(self, structure, generations, cap=True, lobes=None):
         """vescan's clip stage; lobes: pipeline.clip.generation_lobes (None: all the lobes, see generationLobes)."""
-        from vescan_field.config import ClipConfig
-        from vescan_field.stages import clip
+        ClipConfig, clip = self.module("config").ClipConfig, self.module("stages.clip")
         ctx = self.contexts[structure]
         if not self.canCutByLobe(structure):
             lobes = None
@@ -1270,8 +1330,10 @@ class VeScanLogic(ScriptedLoadableModuleLogic):
             elif node.GetAttribute(TABLE_ATTRIBUTE) == "crossings":
                 self.crossingsTableNode = node
         self.lobesNode = self._inputs.get("lobes", (None, None))[1]
-        if outputDir and importlib.util.find_spec("vescan_field"):
-            from vescan_field.paths import PipelinePaths, final_export_dir
+        self.package = METHOD_PACKAGE.get(self.getParameterNode().method, METHOD_PACKAGE["field"])  # of the saved run
+        if outputDir and importlib.util.find_spec(self.package):
+            pathsmod = self.module("paths")
+            PipelinePaths, final_export_dir = pathsmod.PipelinePaths, pathsmod.final_export_dir
             configPath = pathlib.Path(outputDir) / "vescan_config.json"
             enabled = json.loads(configPath.read_text())["pipeline"]["lobes"].get("enabled") if configPath.exists() else None
             lobes = dict.fromkeys(enabled or LOBES)  # the clip stage uses only the lobe names
@@ -1419,4 +1481,9 @@ class VeScanTest(ScriptedLoadableModuleTest):
         self.assertFalse(cfg.pipeline.stages.anatomy)
         self.assertEqual(cfg.batch.structures.airways.classes, ["lung_airways"])
         self.assertTrue((outputDir / "vescan_config.json").exists())
+        # Thalweg: its own JSON (no pipeline.field), with the bifurcations from the UI
+        params.method, params.bifurcations = "thalweg", "point"
+        cfg = logic.buildConfig(params, outputDir)
+        self.assertEqual(cfg.pipeline.centerlines.bifurcations, "point")
+        self.assertEqual(cfg.batch.structures.airways.classes, ["lung_airways"])
         self.delayDisplay("Config test passed")

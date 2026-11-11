@@ -600,6 +600,19 @@
           <property name="checked">
            <bool>true</bool>
           </property>
+          <property name="toolTip">
+           <string>VeScan-field: its own field-based tracer</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QRadioButton" name="thalwegRadio">
+          <property name="text">
+           <string>Thalweg</string>
+          </property>
+          <property name="toolTip">
+           <string>VeScan-thalweg: the centerlines of Mike Halle's thalweg</string>
+          </property>
          </widget>
         </item>
         <item>
@@ -628,13 +641,37 @@
        </layout>
       </item>
       <item row="1" column="0">
+       <widget class="QLabel" name="bifurcationsLabel">
+        <property name="text">
+         <string>Bifurcations:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="bifurcationsCombo">
+        <property name="toolTip">
+         <string>Thalweg only (pipeline.centerlines.bifurcations). Zone: blanked bifurcation zones as VMTK, generations comparable with VMTK's. Point: the junction, as Field (about twice VMTK's generations).</string>
+        </property>
+        <item>
+         <property name="text">
+          <string>Zone (as VMTK)</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>Point (as Field)</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item row="2" column="0">
        <widget class="QLabel" name="label_35">
         <property name="text">
          <string>Structures:</string>
         </property>
        </widget>
       </item>
-      <item row="1" column="1">
+      <item row="2" column="1">
        <layout class="QHBoxLayout" name="layout_31">
         <item>
          <widget class="QCheckBox" name="arteryCheck">
@@ -690,14 +727,14 @@
         </item>
        </layout>
       </item>
-      <item row="2" column="0">
+      <item row="3" column="0">
        <widget class="QLabel" name="label_36">
         <property name="text">
          <string>Stages:</string>
         </property>
        </widget>
       </item>
-      <item row="2" column="1">
+      <item row="3" column="1">
        <layout class="QVBoxLayout" name="layout_32">
         <item>
          <widget class="QCheckBox" name="preprocessCheck">
@@ -740,7 +777,7 @@
         </item>
        </layout>
       </item>
-      <item row="3" column="0" colspan="2">
+      <item row="4" column="0" colspan="2">
        <widget class="QLabel" name="surfaceLabelsNote">
         <property name="text">
          <string>&lt;i&gt;Surface labels are always computed.&lt;/i&gt;</string>

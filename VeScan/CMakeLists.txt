@@ -10,6 +10,7 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Icons/${MODULE_NAME}.png
   Resources/UI/${MODULE_NAME}.ui
   Resources/vescan_field.json
+  Resources/vescan_thalweg.json
   Resources/ColorTables/ColorTableCrossings_EN.csv
   Resources/ColorTables/ColorTableLobeLabel_EN.csv
   Resources/ColorTables/ColorTableLobesFissures_EN.csv

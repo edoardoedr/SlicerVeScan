@@ -6,8 +6,9 @@
 2. checks that its pyproject.toml has the tag's version;
 3. points VeScan/Resources/requirements.txt to the tag (ensureVescanField reads the required version there);
 4. copies the four ColorTable*_EN.csv into VeScan/Resources/ColorTables/;
-5. compares configs/field/example.json with VeScan/Resources/vescan_field.json, without changing it: the keys
-   set by the UI are skipped, a new, removed or changed key may need a change in the module.
+5. compares configs/<method>/example.json with VeScan/Resources/vescan_<method>.json, for each method (field,
+   thalweg), without changing them: the keys set by the UI are skipped, a new, removed or changed key may need
+   a change in the module.
 
 No commit, nothing installed. Standard library only.
 """
@@ -25,12 +26,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RESOURCES = ROOT / "VeScan" / "Resources"
 ARCHIVE_URL = "https://github.com/edoardoedr/VeScan-field/archive/refs/tags/{tag}.zip"
+METHODS = ["field", "thalweg"]  # configs/<method>/example.json <-> VeScan/Resources/vescan_<method>.json
 COLOR_TABLES = ["ColorTableCrossings_EN.csv", "ColorTableLobeLabel_EN.csv",
                 "ColorTableLobesFissures_EN.csv", "ColorTableVessels_EN.csv"]
 # keys of the config set by the module (VeScanLogic.buildConfig / applyCut) or only descriptive
 UI_KEYS = re.compile(r"^(experiment_name|notes|batch\.(patients|surfaces|results)_root_dir|batch\.store"
                      r"|batch\.structures\.\w+\.enabled|pipeline\.stages\.\w+|pipeline\.clip\.\w+"
-                     r"|pipeline\.lobes\.enabled)$")
+                     r"|pipeline\.lobes\.enabled|pipeline\.centerlines\.bifurcations)$")
 
 
 def flatten(data, prefix=""):
@@ -78,18 +80,26 @@ def main():
             shutil.copyfile(source, target)
             print(f"{name}: {'updated' if changed else 'unchanged'}")
 
-        example = flatten(json.loads((release / "configs" / "field" / "example.json").read_text()))
-    bundled = flatten(json.loads((RESOURCES / "vescan_field.json").read_text()))
+        examples = {method: json.loads((release / "configs" / method / "example.json").read_text())
+                    for method in METHODS}
+    for method, example in examples.items():
+        compare(example, RESOURCES / f"vescan_{method}.json")
+
+
+def compare(example, bundledPath):
+    """Print the differences between a release's example.json and a bundled config (keys set by the UI skipped)."""
+    example = flatten(example)
+    bundled = flatten(json.loads(bundledPath.read_text()))
     keys = sorted(key for key in example.keys() | bundled.keys() if not UI_KEYS.match(key))
     differences = [f"  new key     {key} = {example[key]!r}" if key not in bundled else
                    f"  removed key {key}" if key not in example else
                    f"  changed     {key}: {bundled[key]!r} -> {example[key]!r}"
                    for key in keys if example.get(key, None) != bundled.get(key, None) or (key in example) != (key in bundled)]
     if differences:
-        print("vescan_field.json differs from example.json (not changed, check the module):")
+        print(f"{bundledPath.name} differs from example.json (not changed, check the module):")
         print("\n".join(differences))
     else:
-        print("vescan_field.json: in sync with example.json")
+        print(f"{bundledPath.name}: in sync with example.json")
 
 
 if __name__ == "__main__":

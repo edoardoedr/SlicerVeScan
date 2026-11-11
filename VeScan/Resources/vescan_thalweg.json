@@ -1,0 +1,137 @@
+{
+  "experiment_name": "SlicerVeScan (thalweg)",
+  "notes": "Base config of the VeScan module with the Thalweg method, loaded with vescan_thalweg.config. Every parameter is set here; the module overwrites only: batch.patients_root_dir / surfaces_root_dir / results_root_dir (output folder), batch.store, batch.structures.<s>.enabled, batch.structures.airways.classes (no airway wall input), pipeline.stages, pipeline.centerlines.bifurcations and pipeline.clip.",
+  "logging": {
+    "level": "INFO",
+    "file_name": "pipeline.log"
+  },
+  "batch": {
+    "enabled": false,
+    "patients_root_dir": "",
+    "surfaces_root_dir": "",
+    "results_root_dir": "",
+    "store": "lung_vessels.duckn.zip",
+    "structures": {
+      "artery": {
+        "enabled": true,
+        "classes": [
+          "lung_arteries"
+        ]
+      },
+      "veins": {
+        "enabled": true,
+        "classes": [
+          "lung_veins"
+        ]
+      },
+      "airways": {
+        "enabled": true,
+        "classes": [
+          "lung_airways",
+          "lung_airways_wall"
+        ]
+      }
+    }
+  },
+  "pipeline": {
+    "stages": {
+      "surfaces": true,
+      "centerlines": true,
+      "anatomy": true,
+      "surface_labels": true,
+      "clip": true
+    },
+    "debug_files": false,
+    "lobes": {
+      "enabled": [
+        "RUL",
+        "RML",
+        "RLL",
+        "LLL",
+        "LUL"
+      ],
+      "names": {}
+    },
+    "surfaces": {
+      "convert": {
+        "method": "flying-edges",
+        "smoothing_factor": 0.5,
+        "decimation_factor": 0.0,
+        "compute_normals": true
+      },
+      "preprocess": {
+        "enabled": true,
+        "decimate": true,
+        "target_points": 100000,
+        "tolerance": 0.05,
+        "keep_largest_component": true
+      },
+      "lobe_segments": {
+        "enabled": true,
+        "extract_fissures": true,
+        "fissure_contact_tolerance": 1.0,
+        "min_fissure_component_area": 50.0,
+        "min_fissure_area": 100.0
+      }
+    },
+    "centerlines": {
+      "bifurcations": "vmtk",
+      "trace": {
+        "connectivity": "field",
+        "cover_scale": 1.5,
+        "cover_constant_mm": 1.0,
+        "cost_epsilon_mm": 0.1,
+        "ridge_passes": 4,
+        "prune": "auto",
+        "recenter": null,
+        "root": "inlet",
+        "radius_interval_logits": 2.0
+      },
+      "vmtk": {
+        "resampling_step_mm": 0.3,
+        "vmtk_compatible": false,
+        "min_branch_length": 1.0,
+        "orphan_root_repair_tolerance": 0.5
+      },
+      "point": {
+        "step_mm": 0.5,
+        "bifurcation_halfwidth_mm": null,
+        "short_segment_divisor": 3.0
+      },
+      "write_vescan": true,
+      "add_virtual_root_for_veins": true,
+      "virtual_root_min_length_fraction": 0.1
+    },
+    "anatomy": {
+      "containment_threshold": 0.1,
+      "containment_tolerance": 0.0001,
+      "no_lobe_region_min_length_mm": 25.0,
+      "min_piercings_for_interlobar": 2,
+      "interlobar_max_median_angle_deg": 30.0,
+      "grazing_angle_deg": 10.0,
+      "tangent_window_mm": 5.0,
+      "fissure_patch_radius_mm": 5.0,
+      "fissure_patch_min_points": 12,
+      "duplicate_piercing_mm": 0.1,
+      "statistics": true
+    },
+    "surface_labels": {
+      "branch_arrays": [
+        "GroupId",
+        "IsBifurcation",
+        "Generation",
+        "CellId",
+        "Length",
+        "AverageRadius"
+      ],
+      "max_island_area_fraction": 0.0025,
+      "max_island_passes": 5,
+      "max_protected_crossing_id": 500
+    },
+    "clip": {
+      "max_generations": 8,
+      "cap": true,
+      "generation_lobes": null
+    }
+  }
+}

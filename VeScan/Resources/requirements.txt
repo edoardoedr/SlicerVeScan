@@ -1,3 +1,4 @@
 # Installed on first use by VeScan.ensureVescanField (Slicer's numpy is pinned there).
-# Tag archive instead of git+https: no git needed on the user's machine.
-vescan-field @ https://github.com/edoardoedr/VeScan-field/archive/refs/tags/v1.0.0.zip
+# Tag archive instead of git+https (vescan-field pins rankfield and thalweg the same way): no git needed on
+# the user's machine.
+vescan-field @ https://github.com/edoardoedr/VeScan-field/archive/refs/tags/v1.1.1.zip

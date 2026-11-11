@@ -11,7 +11,7 @@ Given a set of vessel segmentations (arteries, veins, pulmonary airways) as inpu
 - detects **crossing vessels** (branches that cross into a neighbouring pulmonary lobe), together with the **interlobar fissures** they cross;
 - **cuts the vessel tree** to a chosen number of generations.
 
-**SlicerVeScan** brings VeScan into [3D Slicer](https://www.slicer.org). The computation is the core library [VeScan-field](https://github.com/edoardoedr/VeScan-field) (Python package `vescan-field`): the extension loads the inputs with Slicer, runs the VeScan stages on them and shows every result in the 3D view as soon as it is written. Outputs, file names and colour tables are the same as VeScan-field's.
+**SlicerVeScan** brings VeScan into [3D Slicer](https://www.slicer.org). The computation is the core library [VeScan-field](https://github.com/edoardoedr/VeScan-field) (Python package `vescan-field`): the extension loads the inputs with Slicer, runs the VeScan stages on them and shows every result in the 3D view as soon as it is written. Two methods compute the centerlines, both in the same package: **Field** (`vescan_field`, VeScan-field's own tracer) and **Thalweg** (`vescan_thalweg`, the centerlines of Mike Halle's [thalweg](https://github.com/mhalle/thalweg)); every other stage is shared. Outputs, file names and colour tables are the same as VeScan-field's, whatever the method.
 
 ![Arteries, veins and airways labelled by anatomical segment in 3D Slicer](docs/screenshots/overview.png)
 
@@ -42,13 +42,13 @@ Each input is either a file or a node already in the scene (for the structures, 
 
 ## Installation
 
-Tested with 3D Slicer 5.10 (numpy 1.26) and 5.12 (numpy 2.4), with the same results. SlicerVeScan is not in the Slicer Extensions Index yet. To use it from the source:
+Requires 3D Slicer 5.12 or newer (Python 3.12, numpy 2.4, VTK 9.6): `vescan-field` 1.1 needs Python ≥ 3.12, so 3D Slicer 5.10 is no longer supported. SlicerVeScan is not in the Slicer Extensions Index yet. To use it from the source:
 
 1. Clone this repository.
 2. In Slicer: *Edit → Application Settings → Modules → Additional module paths*, add the `VeScan/` folder of the clone and restart Slicer.
 3. Open the module **VeScan** (top level of the module list, or search it with the module finder).
 
-The core, `vescan-field`, is installed on first use: at the first Run (or the first lobe loading) the module asks to install it into Slicer's Python, at the version pinned in [`VeScan/Resources/requirements.txt`](VeScan/Resources/requirements.txt) and keeping Slicer's numpy. When a new version of the extension requires a newer `vescan-field`, the module asks to update it (then restart Slicer). No VMTK and no GPU are needed.
+The core, `vescan-field`, is installed on first use: at the first Run (or the first lobe loading) the module asks to install it into Slicer's Python, at the version pinned in [`VeScan/Resources/requirements.txt`](VeScan/Resources/requirements.txt) and keeping Slicer's numpy. When a new version of the extension requires a newer `vescan-field`, the module asks to update it (then restart Slicer). Its dependencies [rankfield](https://github.com/mhalle/rankfield) and [thalweg](https://github.com/edoardoedr/thalweg) come with it, as GitHub archives: no git is needed. No VMTK and no GPU are needed.
 
 ## Usage
 
@@ -56,7 +56,7 @@ The core, `vescan-field`, is installed on first use: at the first Run (or the fi
 
 1. **Inputs.** Set each input as *File* or *Scene*. A file is loaded and shown in 3D as soon as its path is set; a scene segment is shown when selected (only the chosen segments of a segmentation).
    - **Lobes**: select the five lobe files together (or one label map) and check the table: each lobe is mapped to a segment automatically by its name (`RUL` or `lung_upper_lobe_right`). A lobe can be left to *None*: VeScan then runs on the other lobes only.
-2. **Method.** Choose the structures (artery, veins, airways) and the stages: *Preprocess surfaces*, *Centerline extraction*, *Anatomy*. Surface labels are always computed.
+2. **Method.** Choose the method: *Field* or *Thalweg*; with Thalweg also how a bifurcation is represented, *Zone (as VMTK)* (generations comparable with VMTK's) or *Point (as Field)* (`pipeline.centerlines.bifurcations`). Then the structures (artery, veins, airways) and the stages: *Preprocess surfaces*, *Centerline extraction*, *Anatomy*. Surface labels are always computed.
 3. **Output.** Choose the output folder, or leave it empty to work in a temporary folder that is removed when the scene is closed (save the scene to keep the results). The folder is required when *Preprocess* or *Centerlines* is off: the results of a previous run are read from it.
 4. **Run.** The progress bar follows the stages, the log shows VeScan's messages, and each output appears in 3D when it is written: lobes and fissures, surfaces, centerline trees, anatomical labels. *Cancel* stops after the current step.
 5. **Cut tree.** One slider per structure sets the number of generations to keep. *Cut in lobes* limits the cut to the checked lobes (all by default): the branches that reach another lobe are kept whole (needs *Anatomy*). *Live preview* hides the deeper generations of the centerlines while you move the sliders; *Apply cut* runs VeScan's clip stage and shows the clipped surfaces (optionally capped) with the cut points.
@@ -107,17 +107,24 @@ Every file and scalar array is described in the [VeScan-field README](https://gi
 
 ## Configuration
 
-Every VeScan parameter that is not in the UI comes from [`VeScan/Resources/vescan_field.json`](VeScan/Resources/vescan_field.json), a copy of VeScan-field's `configs/field/example.json` with the standard values, loaded and validated with `vescan_field.config`. The module sets only the output folders, the store file, the structures, the lobes, the stages and the cut. The config of each run is saved as `vescan_config.json` in the output folder.
+Every VeScan parameter that is not in the UI comes from the method's bundled config, a copy of VeScan-field's example with the standard values, loaded and validated by the method's package:
+
+| Method | Config | Copy of | Validated with |
+|---|---|---|---|
+| Field | [`vescan_field.json`](VeScan/Resources/vescan_field.json) | `configs/field/example.json` | `vescan_field.config` |
+| Thalweg | [`vescan_thalweg.json`](VeScan/Resources/vescan_thalweg.json) | `configs/thalweg/example.json` | `vescan_thalweg.config` |
+
+The module sets only the output folders, the store file, the structures, the lobes, the stages, the bifurcations (Thalweg) and the cut. The config of each run is saved as `vescan_config.json` in the output folder.
 
 ## Develop
 
 1. Slicer: *Edit → Application Settings → Developer → Enable developer mode*, restart.
 2. *Application Settings → Modules → Additional module paths*: add the `VeScan/` folder of this repo, restart.
-3. Optional, to work on the core too: editable install from a local clone of VeScan-field, with Slicer's numpy pinned (otherwise pip upgrades it to numpy 2 and breaks Slicer):
-   `/Applications/Slicer.app/Contents/bin/PythonSlicer -m pip install -e <VeScan-field clone> "numpy==1.26.4"`
+3. Optional, to work on the core too: editable install from a local clone of VeScan-field, with Slicer's numpy pinned (otherwise pip may replace Slicer's numpy and break Slicer):
+   `/Applications/Slicer.app/Contents/bin/PythonSlicer -m pip install -e <VeScan-field clone> "numpy==2.4.6"`
 4. Edit `VeScan/VeScan.py` or `VeScan/Resources/UI/VeScan.ui` (*Edit UI* opens Qt Designer), then *Reload* in the module panel.
 
-**New VeScan-field release**: after its tag is pushed, run `python3 tools/sync_vescan.py <tag>` (e.g. `v0.1.2`). It checks the tag's version, points `requirements.txt` to it (users with an older `vescan-field` are then asked to update), copies the colour tables and lists the differences between the release's `example.json` and `vescan_field.json`, to review by hand.
+**New VeScan-field release**: after its tag is pushed, run `python3 tools/sync_vescan.py <tag>` (e.g. `v0.1.2`). It checks the tag's version, points `requirements.txt` to it (users with an older `vescan-field` are then asked to update), copies the colour tables and lists the differences between the release's `configs/field/example.json` and `vescan_field.json`, and between `configs/thalweg/example.json` and `vescan_thalweg.json`, to review by hand.
 
 Open tasks are in [NEXT.md](NEXT.md).
 
@@ -126,5 +133,5 @@ Open tasks are in [NEXT.md](NEXT.md).
 Thanks to [Mike Halle](https://github.com/mhalle):
 
 - [haversack](https://github.com/mhalle/haversack) is the segmentation pipeline whose outputs VeScan reads. VeScan uses it through the fork [edoardoedr/haversack](https://github.com/edoardoedr/haversack).
-- The field-based approach to centerline extraction (centerlines computed from the network's continuous output instead of the binary mask) is his. He implements it in [thalweg](https://github.com/mhalle/thalweg), a field-based successor of VMTK. VeScan-field has its own implementation and does not depend on thalweg.
-- The decoding of the ranked store reproduces [rankfield](https://github.com/mhalle/rankfield) (Apache-2.0).
+- The field-based approach to centerline extraction (centerlines computed from the network's continuous output instead of the binary mask) is his. He implements it in [thalweg](https://github.com/mhalle/thalweg), a field-based successor of VMTK. The Field method has its own implementation; the Thalweg method uses thalweg itself (through the fork [edoardoedr/thalweg](https://github.com/edoardoedr/thalweg)) for the centerlines, the graph and the VMTK-style branch split.
+- The ranked store is read and decoded with [rankfield](https://github.com/mhalle/rankfield) (Apache-2.0).

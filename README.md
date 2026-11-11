@@ -48,7 +48,7 @@ Requires 3D Slicer 5.12 or newer (Python 3.12, numpy 2.4, VTK 9.6): `vescan-fiel
 2. In Slicer: *Edit → Application Settings → Modules → Additional module paths*, add the `VeScan/` folder of the clone and restart Slicer.
 3. Open the module **VeScan** (top level of the module list, or search it with the module finder).
 
-The core, `vescan-field`, is installed on first use: at the first Run (or the first lobe loading) the module asks to install it into Slicer's Python, at the version pinned in [`VeScan/Resources/requirements.txt`](VeScan/Resources/requirements.txt) and keeping Slicer's numpy. When a new version of the extension requires a newer `vescan-field`, the module asks to update it (then restart Slicer). Its dependencies [rankfield](https://github.com/mhalle/rankfield) and [thalweg](https://github.com/edoardoedr/thalweg) come with it, as GitHub archives: no git is needed. No VMTK and no GPU are needed.
+The core, `vescan-field`, is installed on first use: at the first Run (or the first lobe loading) the module asks to install it into Slicer's Python, at the version pinned in [`VeScan/Resources/requirements.txt`](VeScan/Resources/requirements.txt), keeping Slicer's numpy. When a new version of the extension requires a newer `vescan-field`, the module asks to update it (then restart Slicer). No git is needed: `vescan-field` and its dependencies that are not on PyPI ([thalweg](https://github.com/edoardoedr/thalweg), [rankfield](https://github.com/mhalle/rankfield), [labelfield](https://github.com/mhalle/labelfield)) are installed from their GitHub archives, listed in `requirements.txt`, without pip resolving them (`--no-deps`); their PyPI dependencies, in [`requirements-deps.txt`](VeScan/Resources/requirements-deps.txt), are installed after. No VMTK and no GPU are needed.
 
 ## Usage
 
@@ -124,7 +124,7 @@ The module sets only the output folders, the store file, the structures, the lob
    `/Applications/Slicer.app/Contents/bin/PythonSlicer -m pip install -e <VeScan-field clone> "numpy==2.4.6"`
 4. Edit `VeScan/VeScan.py` or `VeScan/Resources/UI/VeScan.ui` (*Edit UI* opens Qt Designer), then *Reload* in the module panel.
 
-**New VeScan-field release**: after its tag is pushed, run `python3 tools/sync_vescan.py <tag>` (e.g. `v0.1.2`). It checks the tag's version, points `requirements.txt` to it (users with an older `vescan-field` are then asked to update), copies the colour tables and lists the differences between the release's `configs/field/example.json` and `vescan_field.json`, and between `configs/thalweg/example.json` and `vescan_thalweg.json`, to review by hand.
+**New VeScan-field release**: after its tag is pushed, run `python3 tools/sync_vescan.py <tag>` (e.g. `v0.1.2`). It checks the tag's version, writes `requirements.txt` and `requirements-deps.txt` from the release's dependency tree (users with an older `vescan-field` are then asked to update), copies the colour tables and lists the differences between the release's `configs/field/example.json` and `vescan_field.json`, and between `configs/thalweg/example.json` and `vescan_thalweg.json`, to review by hand.
 
 Open tasks are in [NEXT.md](NEXT.md).
 

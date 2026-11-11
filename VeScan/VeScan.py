@@ -65,7 +65,10 @@ RESOURCES_DIR = pathlib.Path(__file__).parent / "Resources"
 CONFIG_PATHS = {method: RESOURCES_DIR / f"{package}.json" for method, package in METHOD_PACKAGE.items()}
 BIFURCATIONS = ["vmtk", "point"]  # Thalweg's pipeline.centerlines.bifurcations, in the order of bifurcationsCombo
 MIN_PYTHON = (3, 12)  # vescan-field >= 1.1 (requires-python), i.e. 3D Slicer >= 5.12
-REQUIREMENTS_PATH = pathlib.Path(__file__).parent / "Resources" / "requirements.txt"
+# vescan-field and its git dependencies as GitHub archives (--no-deps), then their PyPI dependencies; both written
+# by tools/sync_vescan.py
+REQUIREMENTS_PATH = RESOURCES_DIR / "requirements.txt"
+REQUIREMENTS_DEPS_PATH = RESOURCES_DIR / "requirements-deps.txt"
 AIRWAY_WALL_CLASS = "lung_airways_wall"
 RAS_TO_LPS = np.diag([-1.0, -1.0, 1.0])
 # node attributes saved with the scene, to find the module's nodes again when a scene is loaded
@@ -193,7 +196,7 @@ def isPathSet(path) -> bool:
 
 def requiredVescanVersion() -> str:
     """vescan-field version required by the module: the tag of the archive in Resources/requirements.txt."""
-    return re.search(r"/tags/v([\d.]+)\.zip", REQUIREMENTS_PATH.read_text()).group(1)
+    return re.search(r"^vescan-field @ \S+/tags/v([\d.]+)\.zip", REQUIREMENTS_PATH.read_text(), re.M).group(1)
 
 
 def installedVescan():
@@ -207,10 +210,12 @@ def installedVescan():
 
 
 def ensureVescanField() -> bool:
-    """Install vescan-field (Resources/requirements.txt) on first use, or update it when the installed version is
-    older than the required one; an editable install (development) is never replaced. numpy stays at Slicer's
-    version, otherwise pip could upgrade it and break Slicer. False if it is missing and the user declines, or if
-    Slicer's Python is older than vescan-field's."""
+    """Install vescan-field on first use, or update it when the installed version is older than the required one;
+    an editable install (development) is never replaced. Two steps: requirements.txt (vescan-field and its git
+    dependencies as GitHub archives) with --no-deps, so that no git is needed and pip never compares two URLs of
+    one package; then requirements-deps.txt (their PyPI dependencies). numpy stays at Slicer's version, otherwise
+    pip could upgrade it and break Slicer. False if it is missing and the user declines, or if Slicer's Python
+    is older than vescan-field's."""
     from packaging.version import Version
     if sys.version_info < MIN_PYTHON:
         slicer.util.errorDisplay(_("VeScan needs Python {required} or newer (3D Slicer 5.12 or newer), this Slicer has "
@@ -231,7 +236,8 @@ def ensureVescanField() -> bool:
     if not slicer.util.confirmOkCancelDisplay(question, windowTitle="VeScan"):
         return installed is not None  # an older version still runs
     with slicer.util.displayPythonShell(), slicer.util.WaitCursor():
-        slicer.util.pip_install(["--upgrade", "-r", str(REQUIREMENTS_PATH), f"numpy=={np.__version__}"])
+        slicer.util.pip_install(["--upgrade", "--no-deps", "-r", str(REQUIREMENTS_PATH)])
+        slicer.util.pip_install(["-r", str(REQUIREMENTS_DEPS_PATH), f"numpy=={np.__version__}"])
     importlib.invalidate_caches()
     if installed and {"vescan_field", "vescan_thalweg"} & set(sys.modules):
         slicer.util.infoDisplay(_("vescan-field updated to {required}: restart Slicer to use it.").format(required=required),

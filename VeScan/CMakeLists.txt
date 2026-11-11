@@ -16,6 +16,7 @@ set(MODULE_PYTHON_RESOURCES
   Resources/ColorTables/ColorTableLobesFissures_EN.csv
   Resources/ColorTables/ColorTableVessels_EN.csv
   Resources/requirements.txt
+  Resources/requirements-deps.txt
   )
 
 #-----------------------------------------------------------------------------

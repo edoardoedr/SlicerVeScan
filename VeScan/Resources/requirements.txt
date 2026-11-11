@@ -1,4 +1,8 @@
-# Installed on first use by VeScan.ensureVescanField (Slicer's numpy is pinned there).
-# Tag archive instead of git+https (vescan-field pins rankfield and thalweg the same way): no git needed on
-# the user's machine.
+# Installed by VeScan.ensureVescanField with --no-deps (then requirements-deps.txt); written by
+# tools/sync_vescan.py from vescan-field 1.1.1's dependency tree, do not edit by hand.
+# GitHub archives instead of git+https: no git is needed on the user's machine, and pip never compares
+# two URLs of the same package (thalweg asks rankfield from git, vescan-field as an archive).
+labelfield @ https://github.com/mhalle/labelfield/archive/refs/tags/v0.1.3.zip
+rankfield @ https://github.com/mhalle/rankfield/archive/refs/tags/v0.3.10.zip
+thalweg @ https://github.com/edoardoedr/thalweg/archive/e99659ee2cdb7d2f5603a78faa4f181d7f6df886.zip
 vescan-field @ https://github.com/edoardoedr/VeScan-field/archive/refs/tags/v1.1.1.zip

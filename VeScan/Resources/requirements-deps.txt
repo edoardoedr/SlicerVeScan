@@ -1,0 +1,8 @@
+# PyPI dependencies of requirements.txt (installed with Slicer's numpy pinned); written by
+# tools/sync_vescan.py from vescan-field 1.1.1's dependency tree, do not edit by hand.
+# numpy, scipy, vtk and SimpleITK are Slicer's own and are not listed.
+click>=8.1
+pydantic>=2.6
+pyfqmr
+scikit-image>=0.22
+zarr>=3.3
